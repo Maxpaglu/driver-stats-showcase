@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import Papa from "papaparse";
 import { DriverCard } from "@/components/DriverCard";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { calculateDriverStats } from "@/utils/dataProcessor";
 import type { RaceResult, DriverStats } from "@/types/formula1";
-import { Loader2, Trophy, BarChart3 } from "lucide-react";
+import { Loader2, Trophy, BarChart3, Search } from "lucide-react";
 
 const SEASONS = [
   { year: "2022", file: "/data/2022_race.csv" },
@@ -19,6 +20,7 @@ const Index = () => {
   const [selectedSeason, setSelectedSeason] = useState("2024");
   const [driverStats, setDriverStats] = useState<DriverStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleLogout = () => {
     localStorage.removeItem("isAuthenticated");
@@ -105,20 +107,48 @@ const Index = () => {
           </div>
         ) : (
           <>
-            <div className="mb-8 text-center">
-              <h2 className="text-3xl font-bold text-foreground mb-2">
-                {selectedSeason} Season Standings
-              </h2>
-              <p className="text-muted-foreground">
-                Performance metrics for {driverStats.length} drivers
-              </p>
+            <div className="mb-8">
+              <div className="text-center mb-6">
+                <h2 className="text-3xl font-bold text-foreground mb-2">
+                  {selectedSeason} Season Standings
+                </h2>
+                <p className="text-muted-foreground">
+                  Performance metrics for {driverStats.length} drivers
+                </p>
+              </div>
+
+              {/* Search Input */}
+              <div className="max-w-md mx-auto relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
+                <Input
+                  type="text"
+                  placeholder="Search drivers..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 search-input"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {driverStats.map((stats, index) => (
-                <DriverCard key={stats.driver} stats={stats} rank={index + 1} />
-              ))}
+              {driverStats
+                .filter((stats) =>
+                  stats.driver.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+                .map((stats, index) => (
+                  <DriverCard key={stats.driver} stats={stats} rank={index + 1} />
+                ))}
             </div>
+
+            {driverStats.filter((stats) =>
+              stats.driver.toLowerCase().includes(searchQuery.toLowerCase())
+            ).length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground text-lg">
+                  No drivers found matching "{searchQuery}"
+                </p>
+              </div>
+            )}
           </>
         )}
       </div>
