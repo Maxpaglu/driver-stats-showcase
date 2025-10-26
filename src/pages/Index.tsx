@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Papa from "papaparse";
 import { DriverCard } from "@/components/DriverCard";
 import { Button } from "@/components/ui/button";
 import { calculateDriverStats } from "@/utils/dataProcessor";
 import type { RaceResult, DriverStats } from "@/types/formula1";
-import { Loader2, Trophy } from "lucide-react";
+import { Loader2, Trophy, BarChart3 } from "lucide-react";
 
 const SEASONS = [
   { year: "2022", file: "/data/2022_race.csv" },
@@ -14,9 +15,15 @@ const SEASONS = [
 ];
 
 const Index = () => {
+  const navigate = useNavigate();
   const [selectedSeason, setSelectedSeason] = useState("2024");
   const [driverStats, setDriverStats] = useState<DriverStats[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const handleLogout = () => {
+    localStorage.removeItem("isAuthenticated");
+    navigate("/login");
+  };
 
   useEffect(() => {
     loadSeasonData(selectedSeason);
@@ -51,6 +58,14 @@ const Index = () => {
       {/* Hero Section */}
       <div className="relative overflow-hidden border-b border-border bg-gradient-to-b from-background via-background to-card">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(239,68,68,0.1),transparent)]" />
+        <div className="flex justify-end p-4 absolute top-0 right-0 z-10">
+          <Button variant="outline" onClick={() => navigate("/comparison")} className="mr-2">
+            <BarChart3 className="mr-2" /> Compare Drivers
+          </Button>
+          <Button variant="destructive" onClick={handleLogout}>
+            Logout
+          </Button>
+        </div>
         <div className="container relative mx-auto px-4 py-16">
           <div className="flex items-center justify-center gap-3 mb-4">
             <Trophy className="w-12 h-12 text-primary" />
