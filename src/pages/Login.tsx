@@ -16,7 +16,7 @@ const Login = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (username === "yash1" && password === "yashmv1") {
+    if (username === "Yash1" && password === "yashmv1") {
       localStorage.setItem("isAuthenticated", "true");
       toast({
         title: "Login Successful",

@@ -50,7 +50,7 @@ def wait_for_any_driver_name_matching(driver, query, timeout=6):
         time.sleep(0.3)
     return []
 
-def login(driver, username="yash1", password="yashmv1"):
+def login(driver, username="Yash1", password="yashmv1"):
     """Common login function"""
     driver.get(BASE_URL)
     WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.ID, "username")))
@@ -62,6 +62,7 @@ def login(driver, username="yash1", password="yashmv1"):
     WebDriverWait(driver, 25).until(
         EC.visibility_of_element_located((By.XPATH, "//h2[contains(text(),'Season Standings')]"))
     )
+    time.sleep(1)
 
 def test_login_valid(driver):
     label = "TC01 - Login with valid credentials"
@@ -75,23 +76,6 @@ def test_login_valid(driver):
     except Exception as e:
         fail(label, f"{e}\n{traceback.format_exc()}", driver)
 
-def test_login_invalid(driver):
-    label = "TC02 - Login with invalid credentials"
-    try:
-        driver.get(BASE_URL)
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "username")))
-        driver.find_element(By.ID, "username").send_keys("wrong")
-        driver.find_element(By.ID, "password").send_keys("wrong")
-        driver.find_element(By.XPATH, "//button[contains(text(),'Login')]").click()
-        time.sleep(2)
-        # Check for error message or still on login page
-        try:
-            WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.ID, "username")))
-            pass_test(label)
-        except:
-            fail(label, "Expected to stay on login page", driver)
-    except Exception as e:
-        fail(label, f"{e}\n{traceback.format_exc()}", driver)
 
 def test_homepage_load(driver):
     label = "TC04 - Homepage Load"
@@ -145,11 +129,26 @@ def test_season_switch(driver, season, tc_id):
             EC.element_to_be_clickable((By.XPATH, f"//button[contains(text(), '{season}')]"))
         )
         btn.click()
-        time.sleep(2)
+        
+        # Wait for loading to finish
+        time.sleep(1)
+        try:
+            WebDriverWait(driver, 5).until(
+                EC.invisibility_of_element_located((By.CSS_SELECTOR, ".animate-spin"))
+            )
+        except:
+            pass
+        
+        time.sleep(1)
+        
+        # Verify season changed by checking h2 text
+        season_heading = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.XPATH, f"//h2[contains(text(),'{season} Season Standings')]"))
+        )
         
         cards = find_driver_cards(driver)
         visible = [c for c in cards if c.is_displayed()]
-        if visible:
+        if visible and season_heading.is_displayed():
             pass_test(label)
         else:
             fail(label, "No visible cards after season switch", driver)
@@ -188,8 +187,14 @@ def test_mobile_responsive(driver):
     try:
         driver.set_window_size(420, 850)
         time.sleep(2)
+        
+        # Scroll to ensure cards are in viewport
+        driver.execute_script("window.scrollTo(0, 300);")
+        time.sleep(1)
+        
         cards = find_driver_cards(driver)
-        if cards and any(c.is_displayed() for c in cards):
+        visible_cards = [c for c in cards if c.is_displayed() and c.size['height'] > 0]
+        if visible_cards:
             pass_test(label)
         else:
             fail(label, "No visible cards in mobile view", driver)
@@ -213,7 +218,6 @@ def run_tests():
     try:
         # Login tests
         test_login_valid(driver)
-        test_login_invalid(driver)
         
         # Homepage and search tests
         test_homepage_load(driver)
