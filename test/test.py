@@ -17,6 +17,9 @@ def fail(label, error="", driver=None):
     if driver:
         save_failure_artifacts(label, driver)
 
+def pass_test(label):
+    print(f"✅ {label} PASSED")
+
 def save_failure_artifacts(label, driver):
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_label = "".join(c if c.isalnum() else "_" for c in label)[:60]
@@ -32,18 +35,11 @@ def save_failure_artifacts(label, driver):
         print("Failed to save artifacts:", e)
 
 def find_driver_cards(driver):
-    """
-    New robust card locator:
-    - Each card root contains classes 'rounded-lg' and 'group' in your markup.
-    - Use that to locate cards reliably.
-    """
+    """Locate driver cards using the rounded-lg group classes"""
     return driver.find_elements(By.CSS_SELECTOR, "div.rounded-lg.group")
 
 def wait_for_any_driver_name_matching(driver, query, timeout=6):
-    """
-    Poll for an h3 (driver name) whose text contains query (case-insensitive).
-    Returns list of matching elements (could be empty).
-    """
+    """Poll for driver name h3 elements containing query"""
     end = time.time() + timeout
     q = query.lower()
     while time.time() < end:
@@ -52,193 +48,203 @@ def wait_for_any_driver_name_matching(driver, query, timeout=6):
         if matches:
             return matches
         time.sleep(0.3)
-    # final attempt: return empty list
     return []
 
-def test_homepage(driver):
-    label = "Homepage Load (After Login)"
+def login(driver, username="yash1", password="yashmv1"):
+    """Common login function"""
+    driver.get(BASE_URL)
+    WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.ID, "username")))
+    driver.find_element(By.ID, "username").clear()
+    driver.find_element(By.ID, "username").send_keys(username)
+    driver.find_element(By.ID, "password").clear()
+    driver.find_element(By.ID, "password").send_keys(password)
+    driver.find_element(By.XPATH, "//button[contains(text(),'Login')]").click()
+    WebDriverWait(driver, 25).until(
+        EC.visibility_of_element_located((By.XPATH, "//h2[contains(text(),'Season Standings')]"))
+    )
+
+def test_login_valid(driver):
+    label = "TC01 - Login with valid credentials"
     try:
-        driver.get(BASE_URL)
-        print("Opening", BASE_URL)
-
-        # wait for login form to appear
-        WebDriverWait(driver, 20).until(
-            EC.visibility_of_element_located((By.ID, "username"))
-        )
-        print("Login form visible")
-
-        # login
-        driver.find_element(By.ID, "username").clear()
-        driver.find_element(By.ID, "username").send_keys("yash1")
-        driver.find_element(By.ID, "password").clear()
-        driver.find_element(By.ID, "password").send_keys("yashmv1")
-        driver.find_element(By.XPATH, "//button[contains(text(),'Login')]").click()
-        print("Clicked Login")
-
-        # Wait for hero heading or season heading to show up (longer wait)
-        WebDriverWait(driver, 25).until(
-            EC.visibility_of_element_located(
-                (By.XPATH, "//h1[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'f1')] | //h2[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'season standings')]")
-            )
-        )
-
-        # Also wait for at least one card to be present in grid (ensures content loaded)
-        WebDriverWait(driver, 25).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "div.container div.grid"))
-        )
-
-        # final sanity: ensure at least one visible card exists
+        login(driver)
         cards = find_driver_cards(driver)
         visible = [c for c in cards if c.is_displayed()]
         if not visible:
-            raise Exception("No visible driver cards found after login/homepage load")
-        print(f"✅ {label} - Found {len(visible)} visible driver card(s)")
+            raise Exception("No visible driver cards found after login")
+        pass_test(label)
+    except Exception as e:
+        fail(label, f"{e}\n{traceback.format_exc()}", driver)
+
+def test_login_invalid(driver):
+    label = "TC02 - Login with invalid credentials"
+    try:
+        driver.get(BASE_URL)
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "username")))
+        driver.find_element(By.ID, "username").send_keys("wrong")
+        driver.find_element(By.ID, "password").send_keys("wrong")
+        driver.find_element(By.XPATH, "//button[contains(text(),'Login')]").click()
+        time.sleep(2)
+        # Check for error message or still on login page
+        try:
+            WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.ID, "username")))
+            pass_test(label)
+        except:
+            fail(label, "Expected to stay on login page", driver)
+    except Exception as e:
+        fail(label, f"{e}\n{traceback.format_exc()}", driver)
+
+def test_homepage_load(driver):
+    label = "TC04 - Homepage Load"
+    try:
+        header = driver.find_element(By.XPATH, "//h1[contains(text(),'F1')]")
+        assert header.is_displayed()
+        pass_test(label)
     except Exception as e:
         fail(label, f"{e}\n{traceback.format_exc()}", driver)
 
 def test_search(driver, query, label):
     try:
-        # ensure search input exists and is visible
         search_input = WebDriverWait(driver, 12).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, ".search-input"))
         )
-        # clear & type (this triggers React onChange)
         search_input.clear()
         search_input.send_keys(query)
-        print(f"Typed search query: '{query}'")
-
-        # wait up to 6s for matches in the DOM (polling)
+        time.sleep(1)
+        
         matches = wait_for_any_driver_name_matching(driver, query, timeout=6)
-
-        # Also capture overall visible card count for debug
         cards = find_driver_cards(driver)
         visible_count = sum(1 for c in cards if c.is_displayed())
-        print(f"Total visible card roots found: {visible_count}")
+        
         if matches:
-            print(f"✅ {label}: Found {len(matches)} matching driver name(s). Example text: '{matches[0].text}'")
-            return
-        # if query should produce no results, check for "No drivers found" message
-        if query.lower().startswith("invalid") or query.lower() == "abcdef":
-            no_msg = driver.find_elements(By.XPATH, "//p[contains(text(),'No drivers found') or contains(.,'No drivers')]")
-            if no_msg:
-                print(f"✅ {label}: No-results message present")
-                return
-            else:
-                fail(label, "Expected no-results message but it was not present", driver)
-                return
-
-        # fallback fail with diagnostics
-        debug_texts = [e.text for e in driver.find_elements(By.CSS_SELECTOR, "div.rounded-lg.group h3")]
-        fail(label, f"No matching driver found for '{query}'. Visible driver names: {debug_texts[:10]}", driver)
+            pass_test(label)
+        else:
+            debug_texts = [e.text for e in driver.find_elements(By.CSS_SELECTOR, "div.rounded-lg.group h3")]
+            fail(label, f"No matching driver for '{query}'. Found: {debug_texts[:5]}", driver)
     except Exception as e:
         fail(label, f"{e}\n{traceback.format_exc()}", driver)
 
-def test_season_switch(driver, season):
-    label = f"Season Switch {season}"
+def test_invalid_search(driver):
+    label = "TC07 - Search Invalid Driver"
     try:
-        # Buttons are simple <button> elements containing just the year text.
+        search = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".search-input"))
+        )
+        search.clear()
+        search.send_keys("xyzinvaliddriver123")
+        time.sleep(1)
+        msg = driver.find_element(By.XPATH, "//p[contains(text(),'No drivers found')]")
+        assert msg.is_displayed()
+        pass_test(label)
+    except Exception as e:
+        fail(label, f"{e}\n{traceback.format_exc()}", driver)
+
+def test_season_switch(driver, season, tc_id):
+    label = f"{tc_id} - Season Switch {season}"
+    try:
         btn = WebDriverWait(driver, 12).until(
-            EC.element_to_be_clickable((By.XPATH, f"//button[normalize-space()='{season}' or contains(., '{season}')]"))
+            EC.element_to_be_clickable((By.XPATH, f"//button[contains(text(), '{season}')]"))
         )
         btn.click()
-        print(f"Clicked season button: {season}")
-
-        # Wait until grid content updates: wait for at least one visible card
-        end = time.time() + 10
-        while time.time() < end:
-            cards = find_driver_cards(driver)
-            visible = [c for c in cards if c.is_displayed()]
-            if visible:
-                print(f"✅ {label}: Found {len(visible)} visible cards after switch")
-                return
-            time.sleep(0.4)
-
-        # final diagnostic
-        fail(label, "No visible driver cards after season switch", driver)
-    except Exception as e:
-        fail(label, f"{e}\n{traceback.format_exc()}", driver)
-
-def test_chart_render(driver):
-    label = "Chart Render Check"
-    try:
-        # Chart(s) are rendered as svg under recharts wrappers; wait for at least one SVG
-        svg = WebDriverWait(driver, 12).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "div.recharts-wrapper svg, svg.recharts-surface"))
-        )
-        if svg.is_displayed():
-            print(f"✅ {label}")
+        time.sleep(2)
+        
+        cards = find_driver_cards(driver)
+        visible = [c for c in cards if c.is_displayed()]
+        if visible:
+            pass_test(label)
         else:
-            raise Exception("SVG found but not visible")
+            fail(label, "No visible cards after season switch", driver)
     except Exception as e:
         fail(label, f"{e}\n{traceback.format_exc()}", driver)
 
-def test_comparison_page(driver):
-    label = "Comparison Page"
+def test_comparison_navigation(driver):
+    label = "TC11 - Comparison Page Navigation"
     try:
-        # Compare button at top: "Compare Drivers" in your code (button)
         btn = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Compare') or contains(., 'Compare Drivers')]"))
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Compare')]"))
         )
         btn.click()
-        print("Clicked Compare button")
         WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.XPATH, "//h1[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'head to head') or contains(., 'Head to Head')]"))
+            EC.visibility_of_element_located((By.XPATH, "//h1[contains(text(),'Head to Head')]"))
         )
-        # check charts
-        charts = driver.find_elements(By.CSS_SELECTOR, ".recharts-wrapper")
+        pass_test(label)
+    except Exception as e:
+        fail(label, f"{e}\n{traceback.format_exc()}", driver)
+
+def test_charts(driver):
+    label = "TC14 - Performance Metrics Chart"
+    try:
+        charts = WebDriverWait(driver, 12).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".recharts-wrapper"))
+        )
         if charts and any(c.is_displayed() for c in charts):
-            print(f"✅ {label}: Found {len(charts)} chart wrapper(s)")
+            pass_test(label)
         else:
-            raise Exception("No visible charts on comparison page")
+            fail(label, "No visible charts", driver)
     except Exception as e:
         fail(label, f"{e}\n{traceback.format_exc()}", driver)
 
 def test_mobile_responsive(driver):
-    label = "Mobile Responsive Layout"
+    label = "TC16 - Mobile Responsive Layout"
     try:
         driver.set_window_size(420, 850)
-        time.sleep(1)
+        time.sleep(2)
         cards = find_driver_cards(driver)
-        visible = [c for c in cards if c.is_displayed()]
-        if visible:
-            print(f"✅ {label}: {len(visible)} visible cards in mobile size")
+        if cards and any(c.is_displayed() for c in cards):
+            pass_test(label)
         else:
-            raise Exception("No visible cards in mobile size")
+            fail(label, "No visible cards in mobile view", driver)
+    except Exception as e:
+        fail(label, f"{e}\n{traceback.format_exc()}", driver)
+
+def test_logout(driver):
+    label = "TC03 - Logout Functionality"
+    try:
+        driver.find_element(By.XPATH, "//button[contains(text(),'Logout')]").click()
+        WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, "username")))
+        pass_test(label)
     except Exception as e:
         fail(label, f"{e}\n{traceback.format_exc()}", driver)
 
 def run_tests():
     chrome_options = Options()
-    # comment out next line to see browser UI while debugging
-    # chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--start-maximized")
     driver = webdriver.Chrome(options=chrome_options)
 
     try:
-        test_homepage(driver)
-
-        test_search(driver, "Max", "Search Max")
-        test_search(driver, "ver", "Search Partial")
+        # Login tests
+        test_login_valid(driver)
+        test_login_invalid(driver)
         
-
-        test_season_switch(driver, "2022")
-        test_season_switch(driver, "2023")
-        test_season_switch(driver, "2024")
-
-        test_chart_render(driver)
-        test_comparison_page(driver)
+        # Homepage and search tests
+        test_homepage_load(driver)
+        test_search(driver, "Max", "TC05 - Search Max Verstappen")
+        test_search(driver, "ver", "TC06 - Search Partial")
+        test_invalid_search(driver)
+        
+        # Season switch tests
+        test_season_switch(driver, "2022", "TC08")
+        test_season_switch(driver, "2023", "TC09")
+        test_season_switch(driver, "2024", "TC10")
+        
+        # Navigation and charts
+        test_comparison_navigation(driver)
+        test_charts(driver)
+        
+        # Responsive design
         test_mobile_responsive(driver)
+        
+        # Logout test
+        test_logout(driver)
 
     finally:
-        print("\n\n================ TEST SUMMARY ================")
+        print("\n\n============== ✅ TEST SUMMARY ✅ ==============")
         if FAILED_TESTS:
-            print(" Failed tests:")
+            print("\n❌ Tests Failed:")
             for t in FAILED_TESTS:
                 print(" -", t)
-            
         else:
-            print("✅ All tests passed!")
-        print("=============================================\n")
+            print("\n✅ All Tests Passed Successfully!")
+        print("\n=============================================\n")
         driver.quit()
 
 if __name__ == "__main__":
