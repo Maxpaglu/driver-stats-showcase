@@ -129,29 +129,38 @@ def test_season_switch(driver, season, tc_id):
             EC.element_to_be_clickable((By.XPATH, f"//button[contains(text(), '{season}')]"))
         )
         btn.click()
-        
-        # Wait for loading to finish
-        time.sleep(1)
+
+        # Clear any active search filter to avoid zero results from previous tests
         try:
-            WebDriverWait(driver, 5).until(
+            search_input = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".search-input"))
+            )
+            search_input.clear()
+        except Exception:
+            pass
+
+        # Wait for loading to finish (spinner disappears)
+        try:
+            WebDriverWait(driver, 8).until(
                 EC.invisibility_of_element_located((By.CSS_SELECTOR, ".animate-spin"))
             )
-        except:
+        except Exception:
             pass
-        
-        time.sleep(1)
-        
-        # Verify season changed by checking h2 text
+
+        # Verify season heading updates
         season_heading = WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.XPATH, f"//h2[contains(text(),'{season} Season Standings')]"))
         )
-        
-        cards = find_driver_cards(driver)
-        visible = [c for c in cards if c.is_displayed()]
-        if visible and season_heading.is_displayed():
+
+        # Wait until at least one driver card is visible
+        WebDriverWait(driver, 10).until(
+            lambda d: any(c.is_displayed() and c.size.get("height", 0) > 0 for c in find_driver_cards(d))
+        )
+
+        if season_heading.is_displayed():
             pass_test(label)
         else:
-            fail(label, "No visible cards after season switch", driver)
+            fail(label, "Season heading not visible after switch", driver)
     except Exception as e:
         fail(label, f"{e}\n{traceback.format_exc()}", driver)
 
